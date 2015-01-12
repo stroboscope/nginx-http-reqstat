@@ -1,0 +1,118 @@
+Adjusted for 1.6.2 
+
+Author: Maxim Dounin <mdounin@mdounin.ru>
+
+--- a/src/http/ngx_http.c
++++ b/src/http/ngx_http.c
+@@ -69,8 +69,9 @@ static ngx_int_t ngx_http_add_addrs6(ngx
+ ngx_uint_t   ngx_http_max_module;
+ 
+ 
+-ngx_int_t  (*ngx_http_top_header_filter) (ngx_http_request_t *r);
+-ngx_int_t  (*ngx_http_top_body_filter) (ngx_http_request_t *r, ngx_chain_t *ch);
++ngx_http_output_header_filter_pt ngx_http_top_header_filter;
++ngx_http_output_body_filter_pt ngx_http_top_body_filter;
++ngx_http_request_body_filter_pt ngx_http_top_request_body_filter;
+ 
+ 
+ ngx_str_t  ngx_http_html_default_types[] = {
+--- a/src/http/ngx_http.h
++++ b/src/http/ngx_http.h
+@@ -179,6 +179,7 @@ extern ngx_str_t  ngx_http_html_default_
+ 
+ extern ngx_http_output_header_filter_pt  ngx_http_top_header_filter;
+ extern ngx_http_output_body_filter_pt    ngx_http_top_body_filter;
++extern ngx_http_request_body_filter_pt ngx_http_top_request_body_filter;
+ 
+ 
+ #endif /* _NGX_HTTP_H_INCLUDED_ */
+--- a/src/http/ngx_http_core_module.c
++++ b/src/http/ngx_http_core_module.c
+@@ -26,6 +26,7 @@ static ngx_int_t ngx_http_core_find_stat
+     ngx_http_location_tree_node_t *node);
+ 
+ static ngx_int_t ngx_http_core_preconfiguration(ngx_conf_t *cf);
++static ngx_int_t ngx_http_core_postconfiguration(ngx_conf_t *cf);
+ static void *ngx_http_core_create_main_conf(ngx_conf_t *cf);
+ static char *ngx_http_core_init_main_conf(ngx_conf_t *cf, void *conf);
+ static void *ngx_http_core_create_srv_conf(ngx_conf_t *cf);
+@@ -795,7 +796,7 @@ static ngx_command_t  ngx_http_core_comm
+ 
+ static ngx_http_module_t  ngx_http_core_module_ctx = {
+     ngx_http_core_preconfiguration,        /* preconfiguration */
+-    NULL,                                  /* postconfiguration */
++    ngx_http_core_postconfiguration,       /* postconfiguration */
+ 
+     ngx_http_core_create_main_conf,        /* create main configuration */
+     ngx_http_core_init_main_conf,          /* init main configuration */
+@@ -3400,6 +3401,14 @@ ngx_http_core_preconfiguration(ngx_conf_
+ }
+ 
+ 
++static ngx_int_t
++ngx_http_core_postconfiguration(ngx_conf_t *cf)
++{
++    ngx_http_top_request_body_filter = ngx_http_request_body_save_filter;
++    return NGX_OK;
++}
++
++
+ static void *
+ ngx_http_core_create_main_conf(ngx_conf_t *cf)
+ {
+--- a/src/http/ngx_http_core_module.h
++++ b/src/http/ngx_http_core_module.h
+@@ -525,10 +525,15 @@ ngx_http_cleanup_t *ngx_http_cleanup_add
+ typedef ngx_int_t (*ngx_http_output_header_filter_pt)(ngx_http_request_t *r);
+ typedef ngx_int_t (*ngx_http_output_body_filter_pt)
+     (ngx_http_request_t *r, ngx_chain_t *chain);
++typedef ngx_int_t (*ngx_http_request_body_filter_pt)
++    (ngx_http_request_t *r, ngx_chain_t *chain);
+ 
+ 
+ ngx_int_t ngx_http_output_filter(ngx_http_request_t *r, ngx_chain_t *chain);
+ ngx_int_t ngx_http_write_filter(ngx_http_request_t *r, ngx_chain_t *chain);
++ngx_int_t ngx_http_request_body_save_filter(ngx_http_request_t *r,
++    ngx_chain_t *chain);
++
+ 
+ 
+ ngx_int_t ngx_http_set_disable_symlinks(ngx_http_request_t *r,
+--- a/src/http/ngx_http_request_body.c
++++ b/src/http/ngx_http_request_body.c
+@@ -24,8 +24,6 @@ static ngx_int_t ngx_http_request_body_l
+     ngx_chain_t *in);
+ static ngx_int_t ngx_http_request_body_chunked_filter(ngx_http_request_t *r,
+     ngx_chain_t *in);
+-static ngx_int_t ngx_http_request_body_save_filter(ngx_http_request_t *r,
+-    ngx_chain_t *in);
+ 
+ 
+ ngx_int_t
+@@ -892,7 +890,7 @@ ngx_http_request_body_length_filter(ngx_
+         ll = &tl->next;
+     }
+ 
+-    rc = ngx_http_request_body_save_filter(r, out);
++    rc = ngx_http_top_request_body_filter(r, out);
+ 
+     ngx_chain_update_chains(r->pool, &rb->free, &rb->busy, &out,
+                             (ngx_buf_tag_t) &ngx_http_read_client_request_body);
+@@ -1044,7 +1042,7 @@ ngx_http_request_body_chunked_filter(ngx
+         }
+     }
+ 
+-    rc = ngx_http_request_body_save_filter(r, out);
++    rc = ngx_http_top_request_body_filter(r, out);
+ 
+     ngx_chain_update_chains(r->pool, &rb->free, &rb->busy, &out,
+                             (ngx_buf_tag_t) &ngx_http_read_client_request_body);
+@@ -1053,7 +1051,7 @@ ngx_http_request_body_chunked_filter(ngx
+ }
+ 
+ 
+-static ngx_int_t
++ngx_int_t
+ ngx_http_request_body_save_filter(ngx_http_request_t *r, ngx_chain_t *in)
+ {
+ #if (NGX_DEBUG)
