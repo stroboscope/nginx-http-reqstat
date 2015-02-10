@@ -34,7 +34,6 @@ struct ngx_http_reqstat_rbnode_s {
     ngx_atomic_t                 http_3xx;
     ngx_atomic_t                 http_4xx;
     ngx_atomic_t                 http_5xx;
-    ngx_atomic_t                 http_503;
     ngx_atomic_t                 other_status;
     ngx_atomic_t                 rt;
     ngx_atomic_t                 ureq;
@@ -97,9 +96,6 @@ typedef struct {
 
 #define NGX_HTTP_REQSTAT_5XX                                            \
     offsetof(ngx_http_reqstat_rbnode_t, http_5xx)
-
-#define NGX_HTTP_REQSTAT_503                                            \
-    offsetof(ngx_http_reqstat_rbnode_t, http_503)
 
 #define NGX_HTTP_REQSTAT_OTHER_STATUS                                   \
     offsetof(ngx_http_reqstat_rbnode_t, other_status)

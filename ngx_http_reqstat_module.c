@@ -10,7 +10,7 @@ ngx_int_t  (*ngx_http_top_body_filter) (ngx_http_request_t *r, ngx_chain_t *ch);
 ngx_int_t  (*ngx_http_top_input_body_filter) (ngx_http_request_t *r,
     ngx_buf_t *buf);
 
-off_t  ngx_http_reqstat_fields[24] = {
+off_t  ngx_http_reqstat_fields[23] = {
     NGX_HTTP_REQSTAT_LAST_1,
     NGX_HTTP_REQSTAT_LAST_2,
     NGX_HTTP_REQSTAT_LAST_3,
@@ -29,7 +29,6 @@ off_t  ngx_http_reqstat_fields[24] = {
     NGX_HTTP_REQSTAT_3XX,
     NGX_HTTP_REQSTAT_4XX,
     NGX_HTTP_REQSTAT_5XX,
-    NGX_HTTP_REQSTAT_503,
     NGX_HTTP_REQSTAT_OTHER_STATUS,
     NGX_HTTP_REQSTAT_RT,
     NGX_HTTP_REQSTAT_UPS_REQ,
@@ -478,10 +477,6 @@ ngx_http_reqstat_log_handler(ngx_http_request_t *r)
             ngx_http_reqstat_count(fnode, NGX_HTTP_REQSTAT_OTHER_STATUS, 1);
         }
 
-        if (status == 503) {
-            ngx_http_reqstat_count(fnode, NGX_HTTP_REQSTAT_503, 1);
-        }
-
         tp  = ngx_timeofday();
         now = (ngx_msec_t) (tp->sec * 1000 + tp->msec);
 
@@ -634,7 +629,6 @@ ngx_http_reqstat_purge_handler(ngx_http_request_t *r)
             node->http_3xx = 0;
             node->http_4xx = 0;
             node->http_5xx = 0;
-            node->http_503 = 0;
             node->other_status = 0;
             node->rt = 0;
             node->ureq = 0;
@@ -690,6 +684,7 @@ ngx_http_reqstat_show_handler(ngx_http_request_t *r)
     for (free = busy = NULL, i = 0; i < display->nelts; i++) {
 
         ctx = shm_zone[i]->data;
+        ngx_shmtx_lock(&ctx->shpool->mutex);
 
         for (q = ngx_queue_head(&ctx->sh->queue);
              q != ngx_queue_sentinel(&ctx->sh->queue);
@@ -768,6 +763,7 @@ ngx_http_reqstat_show_handler(ngx_http_request_t *r)
             ngx_chain_update_chains(&free, &busy, &tl,
                                     (ngx_buf_tag_t) &ngx_http_reqstat_module);
 #endif
+        ngx_shmtx_unlock(&ctx->shpool->mutex);
         }
     }
 
